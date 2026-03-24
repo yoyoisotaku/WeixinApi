@@ -1,0 +1,28 @@
+{
+  "backend": {
+    "base_url": "https://your-ai-hr.example.com/api/v1",
+    "token": "replace-with-backend-ingest-token"
+  },
+  "watch": {
+    "directories": [
+      "~/HR_Input/Payroll",
+      "~/HR_Input/Offers"
+    ],
+    "scan_interval_seconds": 60,
+    "max_file_size_mb": 20,
+    "include_file_content": false,
+    "max_inline_file_size_mb": 5,
+    "batch_size": 20,
+    "state_file": "./state/agent_state.json"
+  },
+  "feishu": {
+    "enabled": true,
+    "endpoint": "https://open.feishu.cn/open-apis/contact/v3/users",
+    "token": "replace-with-feishu-token"
+  },
+  "timesheet": {
+    "enabled": true,
+    "endpoint": "https://timesheet.example.com/api/timesheets",
+    "token": "replace-with-timesheet-token"
+  }
+}

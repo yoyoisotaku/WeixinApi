@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Growth HR Copilot - Web Preview</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Growth HR Copilot（Web预览版）</h1>
+      <p>先跑通业务：老板访谈 → 动态问题 → 组织建议（可反复迭代）。</p>
+    </header>
+
+    <section class="card" id="intro-card">
+      <h2>第一步：老板自由讲述（15-30分钟）</h2>
+      <label for="narrative">请讲述公司现状（业务、城市办公室分工、目前人力问题、未来担忧）</label>
+      <textarea id="narrative" rows="6" placeholder="例如：我们在上海/深圳/成都有办公室，当前降本优先...\n"></textarea>
+      <button id="save-narrative">保存并进入结构化问答</button>
+    </section>
+
+    <section class="card hidden" id="survey-card">
+      <h2>第二步：结构化问答</h2>
+      <form id="survey-form">
+        <div class="grid">
+          <label>总人数
+            <input type="number" name="headcount" min="1" required />
+          </label>
+          <label>全职占比（%）
+            <input type="number" name="fte_ratio" min="0" max="100" required />
+          </label>
+          <label>降本权重（0-100）
+            <input type="number" name="goal_cost" min="0" max="100" required />
+          </label>
+          <label>稳交付权重（0-100）
+            <input type="number" name="goal_delivery" min="0" max="100" required />
+          </label>
+          <label>增长权重（0-100）
+            <input type="number" name="goal_growth" min="0" max="100" required />
+          </label>
+          <label>可接受短期波动（%）
+            <input type="number" name="pain_limit" min="0" max="100" required />
+          </label>
+          <label>可被AI替代任务占比（%）
+            <input type="number" name="ai_replace_ratio" min="0" max="100" required />
+          </label>
+          <label>关键岗位不可动人数
+            <input type="number" name="protected_roles" min="0" required />
+          </label>
+        </div>
+
+        <label>当前最紧急问题（可多行）
+          <textarea name="urgent_issues" rows="4" required></textarea>
+        </label>
+
+        <label>本轮动作优先级
+          <select name="action_preference" required>
+            <option value="ai_first">先AI替代再裁员</option>
+            <option value="transfer_first">优先转岗</option>
+            <option value="natural_attrition">优先自然流失</option>
+            <option value="layoff_first">直接裁员优先</option>
+          </select>
+        </label>
+
+        <div class="actions">
+          <button type="submit">生成本轮建议</button>
+          <button type="button" id="reset">清空本轮</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card hidden" id="result-card">
+      <h2>第三步：本轮组织建议</h2>
+      <pre id="result"></pre>
+      <button id="copy-result">复制建议</button>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
