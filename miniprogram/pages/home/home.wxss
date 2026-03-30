@@ -1,0 +1,43 @@
+.container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx;
+  box-sizing: border-box;
+}
+
+.card {
+  width: 100%;
+  background: rgba(30, 41, 59, 0.95);
+  border-radius: 24rpx;
+  padding: 36rpx;
+  box-sizing: border-box;
+}
+
+.title {
+  font-size: 44rpx;
+  font-weight: 700;
+  margin-bottom: 16rpx;
+}
+
+.desc {
+  color: #cbd5e1;
+  line-height: 1.7;
+  margin-bottom: 28rpx;
+}
+
+.list-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.list-item {
+  color: #cbd5e1;
+  margin-bottom: 10rpx;
+}
+
+button {
+  margin-top: 28rpx;
+}

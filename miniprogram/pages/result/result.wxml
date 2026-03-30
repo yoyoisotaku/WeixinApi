@@ -1,0 +1,22 @@
+<view class="container">
+  <view class="card">
+    <view class="title">本局结束</view>
+
+    <view class="score">{{score}}</view>
+    <view class="score-label">总分</view>
+
+    <view class="meta">
+      <view class="meta-item">
+        <view class="meta-value">{{maxCombo}}</view>
+        <view class="meta-label">最高 Combo</view>
+      </view>
+      <view class="meta-item">
+        <view class="meta-value">{{catchCount}}</view>
+        <view class="meta-label">成功接球</view>
+      </view>
+    </view>
+
+    <button class="btn-primary" bindtap="playAgain">再来一局</button>
+    <button class="btn-secondary" bindtap="goHome">返回首页</button>
+  </view>
+</view>

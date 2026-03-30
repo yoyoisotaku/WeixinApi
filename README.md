@@ -1,136 +1,56 @@
-微信公众平台Js API（WeixinApi）
-=======================================
+# 微信小程序 + H5（web-view）腿部接球示例
 
-### 1、API能实现什么？
-	1、分享到微信朋友圈
-	2、分享给微信好友
-	3、分享到腾讯微博
-	4、隐藏/显示右上角的菜单入口
-	5、隐藏/显示底部浏览器工具栏
-	6、获取当前的网络状态
-	7、调起微信客户端的图片播放组件
-	8、关闭公众平台Web页面
+这个仓库现在包含一个**轻量级方案**：
+- 小程序负责首页、开始页、结果页。
+- 真正的小游戏逻辑放在 `web-view` 里的 H5 页面。
+- H5 使用摄像头 + MediaPipe Pose Landmarker（Web）进行单人姿态识别。
+- 业务只关注下半身关键点（左/右髋、膝、踝），进行掉落球接球判定。
 
-你可以用微信的“扫一扫”来打开下面这个二维码体验一把：
+## 目录结构
 
-![Weixin Api Demo](http://www.baidufe.com/upload/images/2014-05-09_17-38-45_8.png)
-
-### 2、如何使用？
-使用起来比较简单，具体可参考demo.html中的实现
-
-#### 1）、分享
-```javascript
-WeixinApi.ready(function(Api) {
-
-	// 微信分享的数据
-	var wxData = {
-		"appId": "", // 服务号可以填写appId
-		"imgUrl" : 'http://www.baidufe.com/fe/blog/static/img/weixin-qrcode-2.jpg',
-		"link" : 'http://www.baidufe.com',
-		"desc" : '大家好，我是Alien，Web前端&Android客户端码农，喜欢技术上的瞎倒腾！欢迎多交流',
-		"title" : "大家好，我是赵先烈"
-	};
-
-	// 分享的回调
-	var wxCallbacks = {
-		// 分享操作开始之前
-		ready : function() {
-			// 你可以在这里对分享的数据进行重组
-			alert("准备分享");
-		},
-		// 分享被用户自动取消
-		cancel : function(resp) {
-			// 你可以在你的页面上给用户一个小Tip，为什么要取消呢？
-			alert("分享被取消");
-		},
-		// 分享失败了
-		fail : function(resp) {
-			// 分享失败了，是不是可以告诉用户：不要紧，可能是网络问题，一会儿再试试？
-			alert("分享失败");
-		},
-		// 分享成功
-		confirm : function(resp) {
-			// 分享成功了，我们是不是可以做一些分享统计呢？
-			//window.location.href='http://192.168.1.128:8080/wwyj/test.html';
-			alert("分享成功");
-		},
-		// 整个分享过程结束
-		all : function(resp) {
-			// 如果你做的是一个鼓励用户进行分享的产品，在这里是不是可以给用户一些反馈了？
-			alert("分享结束");
-		}
-	};
-
-	// 用户点开右上角popup菜单后，点击分享给好友，会执行下面这个代码
-	Api.shareToFriend(wxData, wxCallbacks);
-
-	// 点击分享到朋友圈，会执行下面这个代码
-	Api.shareToTimeline(wxData, wxCallbacks);
-
-	// 点击分享到腾讯微博，会执行下面这个代码
-	Api.shareToWeibo(wxData, wxCallbacks);
-});
+```text
+miniprogram/
+  app.js
+  app.json
+  app.wxss
+  pages/
+    home/      # 首页
+    start/     # web-view 承载页
+    result/    # 结果页
+h5/
+  index.html   # 游戏主体页面
 ```
 
-#### 2）、隐藏右上角option menu入口
-```javascript
-WeixinApi.ready(function(Api) {
-	// 隐藏
-	Api.hideOptionMenu();
-	
-	// 显示
-	// Api.showOptionMenu();
-});
+## 对应目标说明
+
+1. **小程序首页/开始页/结果页**：已完成（`miniprogram/pages/*`）。
+2. **H5 调用摄像头实时画面**：`getUserMedia` + `<video>` 完成。
+3. **MediaPipe Pose Landmarker for Web**：通过 `@mediapipe/tasks-vision` CDN 初始化 `PoseLandmarker`。
+4. **仅使用下半身关键点**：只读取 index `23/24/25/26/27/28`（髋膝踝）。
+5. **顶部随机掉球**：`randomBall()` 从顶部生成。
+6. **腿部命中+上抬趋势判定**：球进入腿部包围框且踝点上抬速度超过阈值视为成功。
+7. **成功后反弹+加分+combo**：命中后反弹、增加分数与连击。
+8. **20 秒结束并回传分数**：超时后 `wx.miniProgram.postMessage({ type: 'GAME_OVER', ... })`。
+9. **轻量方案**：无 3D AR、无 SLAM、无平面检测、无空间锚点。
+10. **优先微信内性能**：
+   - `pose_landmarker_lite` 模型；
+   - 单人识别 `numPoses: 1`；
+   - 视频目标 640x480 / 30fps。
+
+## 接入方式（关键）
+
+1. 将 `h5/index.html` 部署到**HTTPS 静态域名**（例如 COS/OSS + CDN）。
+2. 在小程序后台把该域名加入 `业务域名`（web-view 访问白名单）。
+3. 修改 `miniprogram/pages/start/start.js` 中的：
+
+```js
+const DEFAULT_GAME_URL = 'https://your-static-domain.example.com/h5/index.html';
 ```
 
-#### 3）、隐藏底部工具栏
-```javascript
-WeixinApi.ready(function(Api) {
-	// 隐藏
-	Api.hideToolbar();
-	
-	// 显示
-	// Api.showToolbar();
-});
-```
+4. 用微信开发者工具导入 `miniprogram` 目录并运行。
 
-#### 4）、获取当前的网络类型
-```javascript
-WeixinApi.ready(function(Api) {
-	Api.getNetworkType(function(network){
-		/**
-		 * network取值：
-		 *
-		 * network_type:wifi     wifi网络
-	     * network_type:edge     非wifi,包含3G/2G
-	     * network_type:fail     网络断开连接
-	     * network_type:wwan     2g或者3g
-	     */
-	});
-});
-```
+## 兼容与性能建议
 
-#### 5）、调起客户端图片播放组件
-```javascript
-WeixinApi.ready(function(Api) {
-	// 需要播放的图片src list
-	var srcList = [src1, src2, ..., srcN];
-	// 选一个作为当前需要展示的图片src
-	var curSrc = src1;
-	// 调起
-	Api.imagePreview(curSrc, srcList);
-});
-```
-
-#### 6）、关掉当前微信公众页面窗口
-```javascript
-WeixinApi.ready(function(Api) {	
-	// 关闭窗口
-	Api.closeWindow();
-});
-```
-
-### 3、其他
-详细的使用场景，可以到这里获取：http://www.baidufe.com/item/f07a3be0b23b4c9606bb.html
-
-注意：这只是发烧版本，非微信官方出品！有问题可大家一起来讨论，我很乐意与大家一起来完善这个API。
+- 建议 iOS/Android 微信较新版本，允许摄像头权限。
+- 如果 GPU delegate 在部分机型不稳定，可在 H5 中改为 CPU delegate。
+- 若性能紧张，可进一步降低视频分辨率或减少绘制效果。

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>腿部接球小游戏</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #020617; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+      #app { position: relative; width: 100%; height: 100%; overflow: hidden; }
+      video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+      canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+      #hud { position: absolute; top: 0; left: 0; right: 0; padding: env(safe-area-inset-top) 12px 0; z-index: 2; }
+      .panel { margin-top: 8px; display: flex; justify-content: space-between; background: rgba(2, 6, 23, 0.65); border-radius: 12px; padding: 10px 12px; }
+      .metric { text-align: center; min-width: 78px; }
+      .label { font-size: 12px; opacity: 0.8; }
+      .value { font-size: 20px; font-weight: 700; }
+      #status { position: absolute; bottom: calc(20px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: rgba(2, 6, 23, 0.7); border-radius: 999px; padding: 8px 14px; font-size: 13px; z-index: 2; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14"></script>
+  </head>
+  <body>
+    <div id="app">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+
+      <div id="hud">
+        <div class="panel">
+          <div class="metric"><div class="label">分数</div><div id="score" class="value">0</div></div>
+          <div class="metric"><div class="label">Combo</div><div id="combo" class="value">0</div></div>
+          <div class="metric"><div class="label">剩余</div><div id="time" class="value">20.0</div></div>
+        </div>
+      </div>
+
+      <div id="status">初始化中...</div>
+    </div>
+
+    <script>
+      const GAME_DURATION_MS = 20_000;
+      const HIP = [23, 24];
+      const KNEE = [25, 26];
+      const ANKLE = [27, 28];
+      const MIN_VISIBILITY = 0.45;
+
+      const state = {
+        poseLandmarker: null,
+        videoReady: false,
+        playing: false,
+        score: 0,
+        combo: 0,
+        maxCombo: 0,
+        catchCount: 0,
+        startAt: 0,
+        lastTs: 0,
+        ball: null,
+        lastAnkleY: null,
+        ankleUpVelocity: 0,
+        lastCatchTs: 0,
+      };
+
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const scoreEl = document.getElementById('score');
+      const comboEl = document.getElementById('combo');
+      const timeEl = document.getElementById('time');
+      const statusEl = document.getElementById('status');
+
+      function setStatus(text) { statusEl.textContent = text; }
+
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function randomBall() {
+        return {
+          x: Math.random() * (window.innerWidth - 80) + 40,
+          y: -20,
+          vy: Math.random() * 2.5 + 2.2,
+          r: 22,
+          bounceTicks: 0,
+        };
+      }
+
+      function postGameOver() {
+        const payload = {
+          type: 'GAME_OVER',
+          score: state.score,
+          maxCombo: state.maxCombo,
+          catchCount: state.catchCount,
+        };
+
+        if (window.wx && wx.miniProgram && wx.miniProgram.postMessage) {
+          wx.miniProgram.postMessage({ data: payload });
+        }
+
+        window.parent?.postMessage(payload, '*');
+      }
+
+      function usable(points) {
+        return points.every((p) => p && (p.visibility ?? 1) > MIN_VISIBILITY);
+      }
+
+      function getLegRegion(lms) {
+        const pts = [...HIP, ...KNEE, ...ANKLE].map((i) => lms[i]);
+        if (!usable(pts)) return null;
+
+        const xs = pts.map((p) => p.x * window.innerWidth);
+        const ys = pts.map((p) => p.y * window.innerHeight);
+
+        const minX = Math.max(Math.min(...xs) - 26, 0);
+        const maxX = Math.min(Math.max(...xs) + 26, window.innerWidth);
+        const minY = Math.max(Math.min(...ys) - 18, 0);
+        const maxY = Math.min(Math.max(...ys) + 18, window.innerHeight);
+
+        return { minX, maxX, minY, maxY, anklesY: (lms[27].y + lms[28].y) / 2 };
+      }
+
+      function isBallInRegion(region, b) {
+        return b.x + b.r >= region.minX &&
+          b.x - b.r <= region.maxX &&
+          b.y + b.r >= region.minY &&
+          b.y - b.r <= region.maxY;
+      }
+
+      function updateMotion(region, dt) {
+        if (state.lastAnkleY == null) {
+          state.lastAnkleY = region.anklesY;
+          state.ankleUpVelocity = 0;
+          return;
+        }
+        const v = (state.lastAnkleY - region.anklesY) / Math.max(dt, 1);
+        state.ankleUpVelocity = state.ankleUpVelocity * 0.65 + v * 0.35;
+        state.lastAnkleY = region.anklesY;
+      }
+
+      function detectCatch(region, now) {
+        const inRegion = isBallInRegion(region, state.ball);
+        const legMovingUp = state.ankleUpVelocity > 0.0007;
+        const cooldownPass = now - state.lastCatchTs > 240;
+        if (inRegion && legMovingUp && cooldownPass) {
+          state.lastCatchTs = now;
+          state.catchCount += 1;
+          state.combo += 1;
+          state.maxCombo = Math.max(state.maxCombo, state.combo);
+          state.score += 10 + Math.min(state.combo, 12);
+          state.ball.vy = -(Math.abs(state.ball.vy) * 0.9 + 5.5);
+          state.ball.bounceTicks = 12;
+        }
+      }
+
+      function updateBall(dt, now) {
+        const b = state.ball;
+        b.vy += 0.016 * dt;
+        b.y += b.vy;
+
+        if (b.bounceTicks > 0) {
+          b.bounceTicks -= 1;
+        }
+
+        if (b.y - b.r > window.innerHeight + 10) {
+          state.combo = 0;
+          state.ball = randomBall();
+          state.ball.vy += Math.min((now - state.startAt) / 6000, 5.5);
+        }
+      }
+
+      function draw(region) {
+        ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+        if (region) {
+          ctx.fillStyle = 'rgba(34,211,238,0.16)';
+          ctx.strokeStyle = 'rgba(34,211,238,0.9)';
+          ctx.lineWidth = 2;
+          ctx.fillRect(region.minX, region.minY, region.maxX - region.minX, region.maxY - region.minY);
+          ctx.strokeRect(region.minX, region.minY, region.maxX - region.minX, region.maxY - region.minY);
+        }
+
+        const b = state.ball;
+        const gradient = ctx.createRadialGradient(b.x - 6, b.y - 6, 4, b.x, b.y, b.r);
+        gradient.addColorStop(0, '#fde68a');
+        gradient.addColorStop(1, '#f97316');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (state.combo > 1) {
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          ctx.font = '700 24px sans-serif';
+          ctx.fillText(`COMBO x${state.combo}`, 16, 90);
+        }
+      }
+
+      async function setupPose() {
+        const vision = await window.FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+        );
+
+        state.poseLandmarker = await window.PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          numPoses: 1,
+        });
+      }
+
+      async function setupCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: 'user',
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 30, max: 30 },
+          },
+        });
+        video.srcObject = stream;
+        await video.play();
+        state.videoReady = true;
+      }
+
+      function finishGame() {
+        if (!state.playing) return;
+        state.playing = false;
+        setStatus('游戏结束，正在返回结算页...');
+        postGameOver();
+      }
+
+      function loop(ts) {
+        if (!state.playing) return;
+
+        const dt = state.lastTs ? (ts - state.lastTs) : 16;
+        state.lastTs = ts;
+
+        const elapsed = ts - state.startAt;
+        const remain = Math.max(0, (GAME_DURATION_MS - elapsed) / 1000);
+        timeEl.textContent = remain.toFixed(1);
+
+        if (elapsed >= GAME_DURATION_MS) {
+          finishGame();
+          return;
+        }
+
+        let region = null;
+        if (state.videoReady && state.poseLandmarker) {
+          const result = state.poseLandmarker.detectForVideo(video, ts);
+          if (result.landmarks && result.landmarks[0]) {
+            region = getLegRegion(result.landmarks[0]);
+            if (region) {
+              updateMotion(region, dt);
+              detectCatch(region, ts);
+            }
+          }
+        }
+
+        updateBall(dt, ts);
+        draw(region);
+
+        scoreEl.textContent = String(state.score);
+        comboEl.textContent = String(state.combo);
+        setStatus(region ? '检测中：抬腿接球！' : '请站在画面中并露出髋/膝/踝');
+
+        requestAnimationFrame(loop);
+      }
+
+      async function boot() {
+        try {
+          resizeCanvas();
+          window.addEventListener('resize', resizeCanvas);
+          setStatus('初始化姿态模型...');
+          await setupPose();
+          setStatus('请求摄像头权限...');
+          await setupCamera();
+          setStatus('开始游戏');
+
+          state.playing = true;
+          state.startAt = performance.now();
+          state.ball = randomBall();
+          requestAnimationFrame(loop);
+        } catch (err) {
+          console.error(err);
+          setStatus('初始化失败：请确认 HTTPS、摄像头权限和机型兼容性');
+        }
+      }
+
+      boot();
+    </script>
+  </body>
+</html>
