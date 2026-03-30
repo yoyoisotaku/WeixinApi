@@ -1,0 +1,13 @@
+<view class="container">
+  <view class="card">
+    <view class="title">腿部接球小游戏</view>
+    <view class="desc">通过抬腿动作接住随机掉落的小球，20 秒内尽量拿到更高分。</view>
+
+    <view class="list-title">玩法说明</view>
+    <view class="list-item">1. 打开摄像头，站在画面内（建议能拍到腰部到脚部）。</view>
+    <view class="list-item">2. 使用左/右腿抬腿动作接球。</view>
+    <view class="list-item">3. 命中后会反弹并累计 combo，连击越高得分越快。</view>
+
+    <button class="btn-primary" bindtap="goStart">开始游戏</button>
+  </view>
+</view>

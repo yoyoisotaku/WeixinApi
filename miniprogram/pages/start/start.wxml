@@ -1,0 +1,8 @@
+<view class="container">
+  <view class="tip">请允许摄像头权限，并保持腿部完整进入画面。</view>
+
+  <web-view
+    src="{{gameUrl}}"
+    bindmessage="onGameMessage"
+  ></web-view>
+</view>
